@@ -35,9 +35,10 @@ import numpy as np
 import torch
 import os
 import argparse
+from gym.envs.registration import register
 from datetime import datetime
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import EvalCallback
 from code.wrappers import F110_Wrapped, RandomMap, RandomF1TenthMap, ThrottleMaxSpeedReward
@@ -48,7 +49,7 @@ TRAIN_DIRECTORY = "./train"
 TRAIN_STEPS = 1.5 * np.power(10, 5)    # for reference, it takes about one sec per 500 steps
 SAVE_CHECK_FREQUENCY = int(TRAIN_STEPS / 10)
 MIN_EVAL_EPISODES = 100
-NUM_PROCESS = 4
+NUM_PROCESS = 1
 MAP_PATH = "./f1tenth_racetracks/Austin/Austin_map"
 MAP_EXTENSION = ".png"
 
@@ -60,8 +61,13 @@ def main():
 
     # prepare the environment
     def wrap_env():
+        register( # deleting this gives gym.error.NameNotFound: Environment f110 doesn't exist,
+            id='f110-v0', # but keeping it gives WARN: Overriding environment f110-v0 already in registry???
+            entry_point='f110_gym.envs:F110Env',
+        )
         # starts F110 gym
-        env = gym.make("f110_gym:f110-v0",
+        print('Creating environment...')
+        env = gym.make("f110-v0",
                        map=MAP_PATH,
                        map_ext=MAP_EXTENSION,
                        num_agents=1)
@@ -74,23 +80,41 @@ def main():
         return env
 
     # vectorise environment (parallelise)
+    print('creating envs')
     envs = make_vec_env(wrap_env,
                         n_envs=NUM_PROCESS,
                         seed=np.random.randint(pow(2, 31) - 1),
-                        vec_env_cls=SubprocVecEnv)
+                        vec_env_cls=DummyVecEnv)
 
     # choose RL model and policy here
-    """eval_env = gym.make("f110_gym:f110-v0",map=MAP_PATH,map_ext=MAP_EXTENSION,num_agents=1)
+    """eval_env = gym.make("f110-v0",map=MAP_PATH,map_ext=MAP_EXTENSION,num_agents=1)
     eval_env = F110_Wrapped(eval_env)
     eval_env = RandomF1TenthMap(eval_env, 500)
     eval_env.seed(np.random.randint(pow(2, 31) - 1))"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") #RuntimeError: CUDA error: out of memory whenever I use gpu
-    model = PPO("MlpPolicy", envs,  learning_rate=linear_schedule(0.0003), gamma=0.99, gae_lambda=0.95, verbose=1, device='cpu')
+    print('creating policy')
+    # Use a smaller policy network for the large observation space
+    policy_kwargs = dict(
+        net_arch=[dict(pi=[1, 1], vf=[1, 1])],  # Smaller network architecture
+        activation_fn=torch.nn.ReLU
+    )
+
+    model = PPO(
+        "MlpPolicy", 
+        envs, 
+        policy_kwargs=policy_kwargs,
+        learning_rate=0.0003,  # Use constant learning rate
+        gamma=0.99, 
+        gae_lambda=0.95, 
+        verbose=1, 
+        device='cpu'
+    )
     eval_callback = EvalCallback(envs, best_model_save_path='./train_test/',
                              log_path='./train_test/', eval_freq=5000,
                              deterministic=True, render=False)
 
     # train model and record time taken
+    print('starting')
     start_time = time.time()
     model.learn(total_timesteps=TRAIN_STEPS, callback=eval_callback)
     print(f"Training time {time.time() - start_time:.2f}s")
@@ -105,7 +129,7 @@ def main():
     #          #
 
     # create evaluation environment (same as train environment in this case)
-    eval_env = gym.make("f110_gym:f110-v0",
+    eval_env = gym.make("f110-v0",
                         map=MAP_PATH,
                         map_ext=MAP_EXTENSION,
                         num_agents=1)

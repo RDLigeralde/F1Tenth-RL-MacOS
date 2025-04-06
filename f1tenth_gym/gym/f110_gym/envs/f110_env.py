@@ -185,6 +185,15 @@ class F110Env(gym.Env, utils.EzPickle):
         self.renderer = None
         self.current_obs = None
 
+        # fix AssertionError: the environment must specify an action space
+        # normalised action space, steer and speed
+        self.action_space = spaces.Box(low=np.array(
+            [-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float64)
+
+        # normalised observations, just take the lidar scans
+        self.observation_space = spaces.Box(
+            low=-1.0, high=1.0, shape=(1080,), dtype=np.float64)
+
     def __del__(self):
         """
         Finalizer, does cleanup

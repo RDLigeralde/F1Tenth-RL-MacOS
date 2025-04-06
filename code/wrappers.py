@@ -44,7 +44,7 @@ def convert_range(value, input_range, output_range):
 
 class F110_Wrapped(gym.Wrapper):
     """
-    This is a wrapper for the F1Tenth Gym environment intended
+    This is a wrapper for the F1Tenth gym environment intended
     for only one car, but should be expanded to handle multi-agent scenarios
     """
 
@@ -53,11 +53,11 @@ class F110_Wrapped(gym.Wrapper):
 
         # normalised action space, steer and speed
         self.action_space = spaces.Box(low=np.array(
-            [-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float)
+            [-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float64)
 
         # normalised observations, just take the lidar scans
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(1080,), dtype=np.float)
+            low=-1.0, high=1.0, shape=(1080,), dtype=np.float64)
 
         # store allowed steering/speed/lidar ranges for normalisation
         self.s_min = self.env.params['s_min']
@@ -187,15 +187,15 @@ class F110_Wrapped(gym.Wrapper):
         t = -np.random.uniform(max(-rand_offset * np.pi / 2, 0) - np.pi / 2,
                                min(-rand_offset * np.pi / 2, 0) + np.pi / 2) + direction
         # reset car with chosen pose
-        observation, _, _, _ = self.env.reset(np.array([[x, y, t]]))
-        # reward, done, info can't be included in the Gym format
+        observation, _, _, _ = self.env.reset(poses=np.array([[x, y, t]]))
+        # reward, done, info can't be included in the gym format
         return self.normalise_observations(observation['scans'][0])
 
     def un_normalise_actions(self, actions):
         # convert actions from range [-1, 1] to normal steering/speed range
         steer = convert_range(actions[0], [-1, 1], [self.s_min, self.s_max])
         speed = convert_range(actions[1], [-1, 1], [self.v_min, self.v_max])
-        return np.array([steer, speed], dtype=np.float)
+        return np.array([steer, speed], dtype=np.float64)
 
     def normalise_observations(self, observations):
         # convert observations from normal lidar distances range to range [-1, 1]
